@@ -789,11 +789,8 @@ impl Fs for RealFs {
     }
 
     fn open_repo(&self, dotgit_path: &Path) -> Option<Arc<dyn GitRepository>> {
-        Some(Arc::new(RealGitRepository::new(
-            dotgit_path,
-            self.git_binary_path.clone(),
-            self.executor.clone(),
-        )?))
+        // Git is unconditionally disabled
+        None
     }
 
     fn git_init(&self, abs_work_directory_path: &Path, fallback_branch_name: String) -> Result<()> {
