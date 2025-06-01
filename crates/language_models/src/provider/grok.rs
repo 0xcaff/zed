@@ -2,9 +2,14 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use anyhow::{Context as _, Result, anyhow};
+use credentials_provider::CredentialsProvider;
+use editor::{Editor, EditorElement, EditorStyle};
 use futures::future::BoxFuture;
 use futures::{FutureExt, StreamExt};
-use gpui::{AnyView, App, AsyncApp, Context, Task, Window, prelude::*};
+use gpui::{
+    AnyView, App, AsyncApp, Context, Entity, FontStyle, Task, TextStyle, WhiteSpace, Window,
+    prelude::*, relative, rems,
+};
 use http_client::HttpClient;
 use language_model::{
     AuthenticateError, LanguageModel, LanguageModelCompletionError, LanguageModelCompletionEvent,
@@ -12,14 +17,18 @@ use language_model::{
     LanguageModelProviderName, LanguageModelProviderState, LanguageModelRequest,
     LanguageModelToolChoice, RateLimiter,
 };
+use menu::Confirm;
 use open_ai::{ResponseStreamEvent, stream_completion};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use settings::{Settings, SettingsStore};
-use ui::{Color, IconName, Label, LabelCommon, LabelSize, prelude::*};
+use theme::ThemeSettings;
+use ui::{Button, Color, IconName, Label, LabelCommon, LabelSize, List, prelude::*};
+use util::ResultExt;
 
 use crate::AllLanguageModelSettings;
 use crate::provider::open_ai::{OpenAiEventMapper, count_open_ai_tokens, into_open_ai};
+use crate::ui::InstructionListItem;
 
 const PROVIDER_ID: &str = "grok";
 const PROVIDER_NAME: &str = "Grok";
@@ -67,10 +76,22 @@ impl State {
     }
 
     fn set_api_key(&mut self, api_key: String, cx: &mut Context<Self>) -> Task<Result<()>> {
-        self.api_key = Some(api_key);
-        self.api_key_from_env = false;
-        cx.notify();
-        Task::ready(Ok(()))
+        let credentials_provider = <dyn CredentialsProvider>::global(cx);
+        let api_url = AllLanguageModelSettings::get_global(cx)
+            .grok
+            .api_url
+            .clone();
+        cx.spawn(async move |this, cx| {
+            credentials_provider
+                .write_credentials(&api_url, "Bearer", api_key.as_bytes(), &cx)
+                .await
+                .log_err();
+            this.update(cx, |this, cx| {
+                this.api_key = Some(api_key);
+                this.api_key_from_env = false;
+                cx.notify();
+            })
+        })
     }
 
     fn authenticate(&self, cx: &mut Context<Self>) -> Task<Result<(), AuthenticateError>> {
@@ -78,11 +99,23 @@ impl State {
             return Task::ready(Ok(()));
         }
 
+        let credentials_provider = <dyn CredentialsProvider>::global(cx);
+        let api_url = AllLanguageModelSettings::get_global(cx)
+            .grok
+            .api_url
+            .clone();
         cx.spawn(async move |this, cx| {
             let (api_key, from_env) = if let Ok(api_key) = std::env::var(XAI_API_KEY_VAR) {
                 (api_key, true)
             } else {
-                return Err(AuthenticateError::CredentialsNotFound);
+                let (_, api_key) = credentials_provider
+                    .read_credentials(&api_url, &cx)
+                    .await?
+                    .ok_or(AuthenticateError::CredentialsNotFound)?;
+                (
+                    String::from_utf8(api_key).context("invalid Grok API key")?,
+                    false,
+                )
             };
 
             this.update(cx, |this, cx| {
@@ -229,8 +262,8 @@ impl LanguageModelProvider for GrokLanguageModelProvider {
         self.state.update(cx, |state, cx| state.authenticate(cx))
     }
 
-    fn configuration_view(&self, _window: &mut Window, cx: &mut App) -> AnyView {
-        cx.new(|cx| ConfigurationView::new(self.state.clone(), cx))
+    fn configuration_view(&self, window: &mut Window, cx: &mut App) -> AnyView {
+        cx.new(|cx| ConfigurationView::new(self.state.clone(), window, cx))
             .into()
     }
 
@@ -356,77 +389,151 @@ impl LanguageModel for GrokLanguageModel {
 }
 
 struct ConfigurationView {
+    api_key_editor: Entity<Editor>,
     state: gpui::Entity<State>,
-    load_credentials_task: Option<Task<Result<(), AuthenticateError>>>,
+    load_credentials_task: Option<Task<()>>,
 }
 
 impl ConfigurationView {
-    fn new(state: gpui::Entity<State>, cx: &mut Context<Self>) -> Self {
-        let load_credentials_task = state.update(cx, |state, cx| state.authenticate(cx));
+    fn new(state: gpui::Entity<State>, window: &mut Window, cx: &mut Context<Self>) -> Self {
+        let api_key_editor = cx.new(|cx| {
+            let mut editor = Editor::single_line(window, cx);
+            editor.set_placeholder_text("xai-000000000000000000000000000000000000000000000000", cx);
+            editor
+        });
+
+        cx.observe(&state, |_, _, cx| {
+            cx.notify();
+        })
+        .detach();
+
+        let load_credentials_task = Some(cx.spawn_in(window, {
+            let state = state.clone();
+            async move |this, cx| {
+                if let Some(task) = state
+                    .update(cx, |state, cx| state.authenticate(cx))
+                    .log_err()
+                {
+                    // We don't log an error, because "not signed in" is also an error.
+                    let _ = task.await;
+                }
+
+                this.update(cx, |this, cx| {
+                    this.load_credentials_task = None;
+                    cx.notify();
+                })
+                .log_err();
+            }
+        }));
 
         Self {
+            api_key_editor,
             state,
-            load_credentials_task: Some(load_credentials_task),
+            load_credentials_task,
         }
+    }
+
+    fn save_api_key(&mut self, _: &Confirm, window: &mut Window, cx: &mut Context<Self>) {
+        let api_key = self.api_key_editor.read(cx).text(cx);
+        if api_key.is_empty() {
+            return;
+        }
+
+        let state = self.state.clone();
+        cx.spawn_in(window, async move |_, cx| {
+            state
+                .update(cx, |state, cx| state.set_api_key(api_key, cx))?
+                .await
+        })
+        .detach_and_log_err(cx);
+
+        cx.notify();
+    }
+
+    fn render_api_key_editor(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let settings = ThemeSettings::get_global(cx);
+        let text_style = TextStyle {
+            color: cx.theme().colors().text,
+            font_family: settings.ui_font.family.clone(),
+            font_features: settings.ui_font.features.clone(),
+            font_fallbacks: settings.ui_font.fallbacks.clone(),
+            font_size: rems(0.875).into(),
+            font_weight: settings.ui_font.weight,
+            font_style: FontStyle::Normal,
+            line_height: relative(1.3),
+            white_space: WhiteSpace::Normal,
+            ..Default::default()
+        };
+        EditorElement::new(
+            &self.api_key_editor,
+            EditorStyle {
+                background: cx.theme().colors().editor_background,
+                local_player: cx.theme().players().local(),
+                text: text_style,
+                ..Default::default()
+            },
+        )
+    }
+
+    fn should_render_editor(&self, cx: &Context<Self>) -> bool {
+        !self.state.read(cx).api_key_from_env
     }
 }
 
 impl Render for ConfigurationView {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let is_authenticated = self.state.read(cx).is_authenticated();
-        let has_env_key = self.state.read(cx).api_key_from_env;
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let env_var_set = self.state.read(cx).api_key_from_env;
 
-        v_flex()
-            .p_4()
-            .w_full()
-            .child(
-                h_flex().child(
-                    Label::new("Grok")
-                        .size(LabelSize::Large),
-                ),
-            )
-            .child(
-                h_flex()
-                    .my_2()
-                    .child(
-                        Label::new(if is_authenticated {
-                            "✓ Authenticated"
-                        } else {
-                            "✗ Not authenticated"
-                        })
-                        .color(if is_authenticated {
-                            Color::Success
-                        } else {
-                            Color::Error
-                        }),
-                    ),
-            )
-            .child(if has_env_key {
-                v_flex()
-                    .child(
-                        Label::new(format!(
-                            "Using API key from {} environment variable",
-                            XAI_API_KEY_VAR
+        if self.load_credentials_task.is_some() {
+            div().child(Label::new("Loading credentials...")).into_any()
+        } else if self.should_render_editor(cx) {
+            v_flex()
+                .size_full()
+                .on_action(cx.listener(Self::save_api_key))
+                .child(Label::new("To use Zed's assistant with Grok, you need to add an API key. Follow these steps:"))
+                .child(
+                    List::new()
+                        .child(InstructionListItem::new(
+                            "Create one by visiting",
+                            Some("X.AI's console"),
+                            Some("https://x.ai/"),
                         ))
-                        .color(Color::Muted),
+                        .child(InstructionListItem::text_only(
+                            "Ensure your X.AI account has credits",
+                        ))
+                        .child(InstructionListItem::text_only(
+                            "Paste your API key below and hit enter to start using the assistant",
+                        )),
+                )
+                .child(
+                    h_flex()
+                        .w_full()
+                        .my_2()
+                        .px_2()
+                        .py_1()
+                        .bg(cx.theme().colors().editor_background)
+                        .border_1()
+                        .border_color(cx.theme().colors().border)
+                        .rounded_sm()
+                        .child(self.render_api_key_editor(cx)),
+                )
+                .child(
+                    Label::new(
+                        format!("You can also assign the {XAI_API_KEY_VAR} environment variable and restart Zed."),
                     )
-                    .into_any_element()
-            } else {
-                v_flex()
-                    .child(
-                        Label::new("Please set your XAI_API_KEY environment variable to authenticate.")
-                            .color(Color::Muted)
-                    )
-                    .into_any_element()
-            })
-            .child(
-                v_flex()
-                    .mt_4()
-                    .child(
-                        Label::new("Grok is compatible with the OpenAI API. You can get your API key from https://x.ai/.")
-                            .color(Color::Muted)
-                            .size(LabelSize::Small)
-                    )
-            )
+                    .size(LabelSize::Small).color(Color::Muted),
+                )
+                .into_any()
+        } else {
+            v_flex()
+                .child(
+                    Label::new(if env_var_set {
+                        format!("You're using the Grok API key from the {XAI_API_KEY_VAR} environment variable.")
+                    } else {
+                        "You're authenticated with the Grok API.".to_string()
+                    })
+                )
+                .into_any()
+        }
     }
 }
