@@ -16,6 +16,7 @@ use crate::provider::{
     copilot_chat::CopilotChatSettings,
     deepseek::DeepSeekSettings,
     google::GoogleSettings,
+    grok::GrokSettings,
     lmstudio::LmStudioSettings,
     mistral::MistralSettings,
     ollama::OllamaSettings,
@@ -67,6 +68,7 @@ pub struct AllLanguageModelSettings {
     pub lmstudio: LmStudioSettings,
     pub deepseek: DeepSeekSettings,
     pub mistral: MistralSettings,
+    pub grok: GrokSettings,
 }
 
 #[derive(Default, Clone, Debug, Serialize, Deserialize, PartialEq, JsonSchema)]
@@ -82,6 +84,7 @@ pub struct AllLanguageModelSettingsContent {
     pub deepseek: Option<DeepseekSettingsContent>,
     pub copilot_chat: Option<CopilotChatSettingsContent>,
     pub mistral: Option<MistralSettingsContent>,
+    pub grok: Option<GrokSettingsContent>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, JsonSchema)]
@@ -271,6 +274,12 @@ pub struct ZedDotDevSettingsContent {
 #[derive(Default, Clone, Debug, Serialize, Deserialize, PartialEq, JsonSchema)]
 pub struct CopilotChatSettingsContent {}
 
+#[derive(Default, Clone, Debug, Serialize, Deserialize, PartialEq, JsonSchema)]
+pub struct GrokSettingsContent {
+    pub api_url: Option<String>,
+    pub available_models: Option<Vec<provider::grok::AvailableModel>>,
+}
+
 impl settings::Settings for AllLanguageModelSettings {
     const KEY: Option<&'static str> = Some("language_models");
 
@@ -408,6 +417,17 @@ impl settings::Settings for AllLanguageModelSettings {
             merge(
                 &mut settings.mistral.available_models,
                 mistral.as_ref().and_then(|s| s.available_models.clone()),
+            );
+
+            // Grok
+            let grok = value.grok.clone();
+            merge(
+                &mut settings.grok.api_url,
+                grok.as_ref().and_then(|s| s.api_url.clone()),
+            );
+            merge(
+                &mut settings.grok.available_models,
+                grok.as_ref().and_then(|s| s.available_models.clone()),
             );
         }
 
