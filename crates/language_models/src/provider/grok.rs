@@ -176,7 +176,7 @@ impl LanguageModelProvider for GrokLanguageModelProvider {
 
     fn default_model(&self, _cx: &App) -> Option<Arc<dyn LanguageModel>> {
         Some(self.create_language_model(open_ai::Model::Custom {
-            name: "grok-3".to_string(),
+            name: "grok-3-latest".to_string(),
             display_name: Some("Grok 3".to_string()),
             max_tokens: 131072,
             max_output_tokens: Some(4096),
@@ -186,7 +186,7 @@ impl LanguageModelProvider for GrokLanguageModelProvider {
 
     fn default_fast_model(&self, _cx: &App) -> Option<Arc<dyn LanguageModel>> {
         Some(self.create_language_model(open_ai::Model::Custom {
-            name: "grok-3-fast".to_string(),
+            name: "grok-3-fast-latest".to_string(),
             display_name: Some("Grok 3 Fast".to_string()),
             max_tokens: 131072,
             max_output_tokens: Some(4096),
@@ -197,34 +197,12 @@ impl LanguageModelProvider for GrokLanguageModelProvider {
     fn provided_models(&self, cx: &App) -> Vec<Arc<dyn LanguageModel>> {
         let mut models = BTreeMap::default();
 
-        // Add Grok 3 models
-        models.insert(
-            "grok-3".to_string(),
-            open_ai::Model::Custom {
-                name: "grok-3".to_string(),
-                display_name: Some("Grok 3".to_string()),
-                max_tokens: 131072,
-                max_output_tokens: Some(4096),
-                max_completion_tokens: Some(4096),
-            },
-        );
-        
-        models.insert(
-            "grok-3-fast".to_string(),
-            open_ai::Model::Custom {
-                name: "grok-3-fast".to_string(),
-                display_name: Some("Grok 3 Fast".to_string()),
-                max_tokens: 131072,
-                max_output_tokens: Some(4096),
-                max_completion_tokens: Some(4096),
-            },
-        );
-        
+        // Add Grok 3 models (latest only)
         models.insert(
             "grok-3-latest".to_string(),
             open_ai::Model::Custom {
                 name: "grok-3-latest".to_string(),
-                display_name: Some("Grok 3 Latest".to_string()),
+                display_name: Some("Grok 3".to_string()),
                 max_tokens: 131072,
                 max_output_tokens: Some(4096),
                 max_completion_tokens: Some(4096),
@@ -235,41 +213,19 @@ impl LanguageModelProvider for GrokLanguageModelProvider {
             "grok-3-fast-latest".to_string(),
             open_ai::Model::Custom {
                 name: "grok-3-fast-latest".to_string(),
-                display_name: Some("Grok 3 Fast Latest".to_string()),
+                display_name: Some("Grok 3 Fast".to_string()),
                 max_tokens: 131072,
                 max_output_tokens: Some(4096),
                 max_completion_tokens: Some(4096),
             },
         );
 
-        // Add Grok 3 Mini models
-        models.insert(
-            "grok-3-mini".to_string(),
-            open_ai::Model::Custom {
-                name: "grok-3-mini".to_string(),
-                display_name: Some("Grok 3 Mini".to_string()),
-                max_tokens: 131072,
-                max_output_tokens: Some(4096),
-                max_completion_tokens: Some(4096),
-            },
-        );
-        
-        models.insert(
-            "grok-3-mini-fast".to_string(),
-            open_ai::Model::Custom {
-                name: "grok-3-mini-fast".to_string(),
-                display_name: Some("Grok 3 Mini Fast".to_string()),
-                max_tokens: 131072,
-                max_output_tokens: Some(4096),
-                max_completion_tokens: Some(4096),
-            },
-        );
-        
+        // Add Grok 3 Mini models (non-thinking variants)
         models.insert(
             "grok-3-mini-latest".to_string(),
             open_ai::Model::Custom {
                 name: "grok-3-mini-latest".to_string(),
-                display_name: Some("Grok 3 Mini Latest".to_string()),
+                display_name: Some("Grok 3 Mini".to_string()),
                 max_tokens: 131072,
                 max_output_tokens: Some(4096),
                 max_completion_tokens: Some(4096),
@@ -280,75 +236,54 @@ impl LanguageModelProvider for GrokLanguageModelProvider {
             "grok-3-mini-fast-latest".to_string(),
             open_ai::Model::Custom {
                 name: "grok-3-mini-fast-latest".to_string(),
-                display_name: Some("Grok 3 Mini Fast Latest".to_string()),
+                display_name: Some("Grok 3 Mini Fast".to_string()),
                 max_tokens: 131072,
                 max_output_tokens: Some(4096),
                 max_completion_tokens: Some(4096),
             },
         );
 
-        // Add Grok 2 models
+        // Add Grok 3 Mini models (thinking variants)
         models.insert(
-            "grok-2".to_string(),
+            "grok-3-mini-thinking-latest".to_string(),
             open_ai::Model::Custom {
-                name: "grok-2".to_string(),
+                name: "grok-3-mini-latest".to_string(),
+                display_name: Some("Grok 3 Mini (Thinking)".to_string()),
+                max_tokens: 131072,
+                max_output_tokens: Some(4096),
+                max_completion_tokens: Some(4096),
+            },
+        );
+        
+        models.insert(
+            "grok-3-mini-thinking-fast-latest".to_string(),
+            open_ai::Model::Custom {
+                name: "grok-3-mini-fast-latest".to_string(),
+                display_name: Some("Grok 3 Mini Fast (Thinking)".to_string()),
+                max_tokens: 131072,
+                max_output_tokens: Some(4096),
+                max_completion_tokens: Some(4096),
+            },
+        );
+
+        // Add Grok 2 models (latest only)
+        models.insert(
+            "grok-2-latest".to_string(),
+            open_ai::Model::Custom {
+                name: "grok-2-latest".to_string(),
                 display_name: Some("Grok 2".to_string()),
                 max_tokens: 131072,
                 max_output_tokens: Some(4096),
                 max_completion_tokens: Some(4096),
             },
         );
-        
-        models.insert(
-            "grok-2-latest".to_string(),
-            open_ai::Model::Custom {
-                name: "grok-2-latest".to_string(),
-                display_name: Some("Grok 2 Latest".to_string()),
-                max_tokens: 131072,
-                max_output_tokens: Some(4096),
-                max_completion_tokens: Some(4096),
-            },
-        );
-        
-        models.insert(
-            "grok-2-1212".to_string(),
-            open_ai::Model::Custom {
-                name: "grok-2-1212".to_string(),
-                display_name: Some("Grok 2 (1212)".to_string()),
-                max_tokens: 131072,
-                max_output_tokens: Some(4096),
-                max_completion_tokens: Some(4096),
-            },
-        );
 
-        // Add Grok 2 Vision models
-        models.insert(
-            "grok-2-vision".to_string(),
-            open_ai::Model::Custom {
-                name: "grok-2-vision".to_string(),
-                display_name: Some("Grok 2 Vision".to_string()),
-                max_tokens: 32768,
-                max_output_tokens: Some(4096),
-                max_completion_tokens: Some(4096),
-            },
-        );
-        
+        // Add Grok 2 Vision models (latest only)
         models.insert(
             "grok-2-vision-latest".to_string(),
             open_ai::Model::Custom {
                 name: "grok-2-vision-latest".to_string(),
-                display_name: Some("Grok 2 Vision Latest".to_string()),
-                max_tokens: 32768,
-                max_output_tokens: Some(4096),
-                max_completion_tokens: Some(4096),
-            },
-        );
-        
-        models.insert(
-            "grok-2-vision-1212".to_string(),
-            open_ai::Model::Custom {
-                name: "grok-2-vision-1212".to_string(),
-                display_name: Some("Grok 2 Vision (1212)".to_string()),
+                display_name: Some("Grok 2 Vision".to_string()),
                 max_tokens: 32768,
                 max_output_tokens: Some(4096),
                 max_completion_tokens: Some(4096),
